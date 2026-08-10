@@ -59,8 +59,12 @@ With this setting:
 If you set a custom `ruby.precompiled_url` template, mise cannot enumerate available versions and
 version listings are left unfiltered.
 
-`ruby.compile` has no effect on Windows, which installs Ruby from
-[RubyInstaller2](https://rubyinstaller.org/) rather than from `jdx/ruby` or ruby-build.
+`ruby.compile` has no effect on Windows, which installs MRI Ruby from
+[RubyInstaller2](https://rubyinstaller.org/) and JRuby (`ruby@jruby-<version>`) from the
+[JRuby distribution on Maven Central](https://repo1.maven.org/maven2/org/jruby/jruby-dist/)
+rather than from `jdx/ruby` or ruby-build. JRuby requires a Java runtime (e.g.
+`mise use java@temurin-21`). Other engines such as TruffleRuby do not provide Windows
+builds and cannot be installed on Windows.
 
 ### Precompiled build revisions
 

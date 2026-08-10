@@ -40,7 +40,12 @@ impl RubyPlugin {
     }
 
     fn gem_path(&self, tv: &ToolVersion) -> PathBuf {
-        tv.install_path().join("bin").join("gem.cmd")
+        let gem = if super::ruby_common::is_jruby_version(&tv.version) {
+            "gem.bat"
+        } else {
+            "gem.cmd"
+        };
+        tv.install_path().join("bin").join(gem)
     }
 
     async fn install_default_gems(
@@ -133,8 +138,11 @@ impl RubyPlugin {
         let (url, filename) = match locked {
             Some(locked) => locked,
             None => {
-                let artifact =
-                    super::ruby_common::resolve_rubyinstaller_artifact(&tv.version).await;
+                let artifact = if super::ruby_common::is_jruby_version(&tv.version) {
+                    super::ruby_common::resolve_jruby_artifact(&tv.version).await
+                } else {
+                    super::ruby_common::resolve_rubyinstaller_artifact(&tv.version).await
+                };
                 (artifact.url, artifact.filename)
             }
         };
@@ -155,12 +163,31 @@ impl RubyPlugin {
         let filename = tarball_path.file_name().unwrap().to_string_lossy();
         ctx.pr.set_message(format!("extract {filename}"));
         file::remove_all(tv.install_path())?;
-        file::un7z(tarball_path, &tv.download_path(), &Default::default())?;
-        // The archive holds a single top-level directory named after the archive
-        // itself, so derive it instead of rebuilding the version/revision/arch
-        // triple -- the build revision is no longer fixed at 1 (discussion #5227).
-        let dir_name = filename.strip_suffix(".7z").unwrap_or(&filename);
+        let dir_name = if super::ruby_common::is_jruby_version(&tv.version) {
+            // jruby-bin-<v>.zip holds a `jruby-<v>` top-level directory, which
+            // is exactly the mise version string.
+            file::unzip(tarball_path, &tv.download_path(), &Default::default())?;
+            tv.version.clone()
+        } else {
+            file::un7z(tarball_path, &tv.download_path(), &Default::default())?;
+            // The archive holds a single top-level directory named after the archive
+            // itself, so derive it instead of rebuilding the version/revision/arch
+            // triple -- the build revision is no longer fixed at 1 (discussion #5227).
+            filename
+                .strip_suffix(".7z")
+                .unwrap_or(&filename)
+                .to_string()
+        };
         file::move_file(tv.download_path().join(dir_name), tv.install_path())?;
+        if super::ruby_common::is_jruby_version(&tv.version) {
+            // The Windows analog of ruby-build's `ln -fs jruby ruby`: the JRuby
+            // dist ships only the native jruby.exe launcher plus a ruby.bat
+            // wrapper, so materialize ruby.exe as a copy of the launcher. The
+            // launcher locates jruby.dll and JRUBY_HOME from its own path, not
+            // its name, so the copy behaves identically.
+            let bin = tv.install_path().join("bin");
+            file::copy(bin.join("jruby.exe"), bin.join("ruby.exe"))?;
+        }
         Ok(())
     }
 
@@ -225,10 +252,12 @@ impl Backend for RubyPlugin {
         ctx: &InstallContext,
         mut tv: ToolVersion,
     ) -> eyre::Result<ToolVersion> {
-        if !super::ruby_common::is_mri_version(&tv.version) {
+        if !super::ruby_common::is_mri_version(&tv.version)
+            && !super::ruby_common::is_jruby_version(&tv.version)
+        {
             bail!(
                 "Ruby engine '{}' is not supported on Windows.\n\
-                 Only standard MRI Ruby versions can be installed via RubyInstaller2.",
+                 Only standard MRI versions (via RubyInstaller2) and JRuby can be managed by Mise on Windows.",
                 tv.version
             );
         }
@@ -331,6 +360,14 @@ mod tests {
                 .unwrap()
                 .is_empty(),
             "versions for 3 should not be empty"
+        );
+        assert!(
+            !plugin
+                .list_versions_matching(&config, "jruby-9")
+                .await
+                .unwrap()
+                .is_empty(),
+            "versions for jruby-9 should not be empty"
         );
         assert!(
             !plugin
