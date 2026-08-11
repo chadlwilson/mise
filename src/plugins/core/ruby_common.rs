@@ -15,7 +15,7 @@ pub fn is_mri_version(version: &str) -> bool {
     version.chars().next().is_some_and(|c| c.is_ascii_digit())
 }
 
-/// Check if a Ruby version string is a JRuby version (e.g. `jruby-9.4.15.0`).
+/// Check if a Ruby version string is a JRuby version (e.g. `jruby-10.0.6.0`).
 pub fn is_jruby_version(version: &str) -> bool {
     version.starts_with("jruby-")
 }
@@ -114,7 +114,7 @@ pub fn jruby_url(number: &str) -> String {
     )
 }
 
-/// Resolve the archive to download for a JRuby version (e.g. `jruby-9.4.15.0`).
+/// Resolve the archive to download for a JRuby version (e.g. `jruby-10.0.6.0`).
 /// The Maven Central URL is fully deterministic; the checksum comes from the
 /// `.sha256` file published beside the artifact when reachable.
 pub async fn resolve_jruby_artifact(version: &str) -> RubyArchive {
@@ -202,17 +202,17 @@ mod tests {
 
     #[test]
     fn is_jruby_version_only_matches_the_jruby_engine() {
-        assert!(is_jruby_version("jruby-9.4.15.0"));
+        assert!(is_jruby_version("jruby-10.0.6.0"));
         assert!(!is_jruby_version("3.4.4"));
         assert!(!is_jruby_version("truffleruby-24.1.1"));
     }
 
     #[test]
     fn jruby_urls_point_at_maven_central() {
-        assert_eq!(jruby_asset_name("9.4.15.0"), "jruby-dist-9.4.15.0-bin.zip");
+        assert_eq!(jruby_asset_name("10.0.6.0"), "jruby-dist-10.0.6.0-bin.zip");
         assert_eq!(
-            jruby_url("9.4.15.0"),
-            "https://repo1.maven.org/maven2/org/jruby/jruby-dist/9.4.15.0/jruby-dist-9.4.15.0-bin.zip"
+            jruby_url("10.0.6.0"),
+            "https://repo1.maven.org/maven2/org/jruby/jruby-dist/10.0.6.0/jruby-dist-10.0.6.0-bin.zip"
         );
     }
 }

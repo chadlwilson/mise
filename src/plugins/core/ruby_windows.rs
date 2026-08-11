@@ -175,8 +175,8 @@ impl RubyPlugin {
         ctx.pr.set_message(format!("extract {filename}"));
         file::remove_all(tv.install_path())?;
         let dir_name = if super::ruby_common::is_jruby_version(&tv.version) {
-            // jruby-bin-<v>.zip holds a `jruby-<v>` top-level directory, which
-            // is exactly the mise version string.
+            // jruby-dist-<v>-bin.zip holds a `jruby-<v>` top-level directory,
+            // which is exactly the mise version string.
             file::unzip(tarball_path, &tv.download_path(), &Default::default())?;
             tv.version.clone()
         } else {
@@ -190,6 +190,18 @@ impl RubyPlugin {
                 .to_string()
         };
         file::move_file(tv.download_path().join(dir_name), tv.install_path())?;
+        if super::ruby_common::is_jruby_version(&tv.version) {
+            // JRuby dists before 9.4 ship no `ruby` entrypoint on Windows;
+            // newer ones bundle exactly this one-line wrapper. Materialize it
+            // when missing (the analog of ruby-build's `ln -fs jruby ruby`).
+            // It must delegate to jruby.exe rather than be a copy of it: the
+            // launcher runs `-S <basename>` when its exe is named anything but
+            // jruby (see `ruby_path`).
+            let ruby_bat = tv.install_path().join("bin").join("ruby.bat");
+            if !ruby_bat.exists() {
+                file::write(ruby_bat, "@ECHO OFF\n@\"%~dp0jruby.exe\" %*\n")?;
+            }
+        }
         Ok(())
     }
 
