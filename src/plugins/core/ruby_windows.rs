@@ -36,7 +36,18 @@ impl RubyPlugin {
     }
 
     fn ruby_path(&self, tv: &ToolVersion) -> PathBuf {
-        tv.install_path().join("bin").join("ruby.exe")
+        // JRuby ships no ruby.exe, and one must not be created by copying
+        // jruby.exe: the launcher runs `-S <basename>` when its exe is named
+        // anything but jruby (jruby-launcher platformlauncher.cpp), which would
+        // execute the dist's Unix bin/ruby shell script instead of the
+        // interpreter. The shipped ruby.bat wraps jruby.exe under its proper
+        // name, and is the same entrypoint `ruby` resolves to on PATH.
+        let ruby = if super::ruby_common::is_jruby_version(&tv.version) {
+            "ruby.bat"
+        } else {
+            "ruby.exe"
+        };
+        tv.install_path().join("bin").join(ruby)
     }
 
     fn gem_path(&self, tv: &ToolVersion) -> PathBuf {
@@ -179,15 +190,6 @@ impl RubyPlugin {
                 .to_string()
         };
         file::move_file(tv.download_path().join(dir_name), tv.install_path())?;
-        if super::ruby_common::is_jruby_version(&tv.version) {
-            // The Windows analog of ruby-build's `ln -fs jruby ruby`: the JRuby
-            // dist ships only the native jruby.exe launcher plus a ruby.bat
-            // wrapper, so materialize ruby.exe as a copy of the launcher. The
-            // launcher locates jruby.dll and JRUBY_HOME from its own path, not
-            // its name, so the copy behaves identically.
-            let bin = tv.install_path().join("bin");
-            file::copy(bin.join("jruby.exe"), bin.join("ruby.exe"))?;
-        }
         Ok(())
     }
 
