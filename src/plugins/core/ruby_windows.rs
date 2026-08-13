@@ -222,8 +222,12 @@ impl Backend for RubyPlugin {
         //      Ok(None) => {}
         //      Err(e) => warn!("failed to fetch remote versions: {}", e),
         //  }
+        // This fallback only runs when the versions host is unavailable (it is
+        // also skipped by prefer-offline commands like `mise x`), so it must
+        // list JRuby too: fuzzy versions that match nothing here resolve to
+        // the literal request string and the download 404s.
         let releases: Vec<GithubRelease> = github::list_releases("oneclick/rubyinstaller2").await?;
-        let versions = releases
+        let mut versions: Vec<VersionInfo> = releases
             .into_iter()
             .filter_map(|r| {
                 let created_at = Some(r.released_at().to_string());
@@ -240,6 +244,23 @@ impl Backend for RubyPlugin {
             .unique_by(|v| v.version.clone())
             .sorted_by_cached_key(|v| (Versioning::new(&v.version), v.version.clone()))
             .collect();
+        // JRuby's GitHub releases (tagged with the bare version number) only go
+        // back to 9.2.10.0 plus a lone 9.0.5.0; older versions resolve via the
+        // versions host only. Every released version is also published to Maven
+        // Central, where the installer downloads from. Failures degrade to the
+        // MRI-only list rather than breaking it.
+        match github::list_releases("jruby/jruby").await {
+            Ok(releases) => versions.extend(
+                // The API lists newest first; reverse to publication order so
+                // prefix resolution picks the newest matching release last.
+                releases.into_iter().rev().map(|r| VersionInfo {
+                    version: format!("jruby-{}", r.tag_name),
+                    created_at: Some(r.released_at().to_string()),
+                    ..Default::default()
+                }),
+            ),
+            Err(err) => debug!("failed to list jruby releases: {err:#}"),
+        }
         Ok(versions)
     }
 
